@@ -18,9 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "i2c-lcd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -30,7 +35,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define ENCODER_RESOLUTION 48.0f
+#define SAMPLE_TIME 0.020f
+#define V_SUPPLY 12.0f
+#define PWM_PERIOD 2399.0f
+#define M_PI 3.1415926535f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -39,15 +48,34 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim6;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 int impulsy = 0;
 int licznik = 0;
+float predk; // current velocity in rad/s
+float set_velocity = 5.0f; // Target velocity in rad/s
+float filtered_velocity = 0.0f;
+float velocity_error = 0.0f;
+float kp = 1.0f, ki = 0.5f, kd = 0.01f; // PID constants (Units: V/(rad/s), V/rad, V/(rad/s^2))
+float pid_output = 0.0f; // in Volts
+float prev_velocity = 0.0f;
+int32_t last_counter = 0;
+float Integral_error = 0;
+char uart_tx_buf[100];
+char uart_rx_buf[20];
+uint8_t rx_char;
+uint8_t rx_idx = 0;
+uint8_t telemetry_flag = 0;
+uint8_t lcd_flag = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,6 +84,9 @@ static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_TIM6_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -97,8 +128,20 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_TIM2_Init();
+  MX_TIM5_Init();
+  MX_TIM6_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  HAL_TIM_Base_Start_IT(&htim6);
+  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
+  HAL_UART_Receive_IT(&hlpuart1, &rx_char, 1);
+  lcd_init ();
+  lcd_send_string ("Inicjalizacja ukladu");
+  HAL_Delay(100);
+  lcd_put_cur(1, 0);
+  lcd_send_string("Start");
+  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -108,9 +151,33 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  impulsy = __HAL_TIM_GET_COUNTER(&htim2);
-	  licznik++;
-	  HAL_Delay(25);
+    if (telemetry_flag)
+    {
+    	int len;
+      telemetry_flag = 0;
+      if (velocity_error<0)
+    	  len = sprintf(uart_tx_buf, "V: % .2f rad/s, E: % .2f rad/s, Out: % .2fV\r\n",
+                               predk, velocity_error, pid_output);
+      else
+    	  len = sprintf(uart_tx_buf, "V: %.2f rad/s, E: +%.2f rad/s, Out: % .2fV\r\n",
+    	                                 predk, velocity_error, pid_output);
+
+      HAL_UART_Transmit(&hlpuart1, (uint8_t*)uart_tx_buf, len, 100);
+    }
+    
+    if (lcd_flag)
+    {
+      lcd_flag = 0;
+      char lcd_buf[17];
+      
+      lcd_put_cur(0, 0);
+      sprintf(lcd_buf, "V:%.2f rad/s  ", predk);
+      lcd_send_string(lcd_buf);
+      
+      lcd_put_cur(1, 0);
+      sprintf(lcd_buf, "E:%.2f rad/s  ", velocity_error);
+      lcd_send_string(lcd_buf);
+    }
   }
   /* USER CODE END 3 */
 }
@@ -176,6 +243,54 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x00805B85;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief LPUART1 Initialization Function
   * @param None
   * @retval None
@@ -191,8 +306,8 @@ static void MX_LPUART1_UART_Init(void)
 
   /* USER CODE END LPUART1_Init 1 */
   hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 209700;
-  hlpuart1.Init.WordLength = UART_WORDLENGTH_7B;
+  hlpuart1.Init.BaudRate = 115200;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
   hlpuart1.Init.StopBits = UART_STOPBITS_1;
   hlpuart1.Init.Parity = UART_PARITY_NONE;
   hlpuart1.Init.Mode = UART_MODE_TX_RX;
@@ -259,6 +374,105 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 0;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 2399;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE END TIM5_Init 2 */
+
+}
+
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 47;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 19999;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+  HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
   * @brief USB_OTG_FS Initialization Function
   * @param None
   * @retval None
@@ -315,6 +529,9 @@ static void MX_GPIO_Init(void)
   HAL_PWREx_EnableVddIO2();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOF, IN1_Pin|IN2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -326,12 +543,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PF6 PF7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  /*Configure GPIO pins : IN1_Pin IN2_Pin */
+  GPIO_InitStruct.Pin = IN1_Pin|IN2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM5;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD3_Pin LD2_Pin */
@@ -355,11 +571,102 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
+  /* Configure GPIO pins : PF8 PF9 for H-Bridge IN1/IN2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim->Instance == TIM6)
+  {
+    int32_t current_counter = (int32_t)__HAL_TIM_GET_COUNTER(&htim2);
+    int32_t diff = current_counter - last_counter;
+    last_counter = current_counter;
+    
+    // Calculate velocity in rad/s
+    float raw_velocity = ((float)diff * 2.0f * M_PI) / (ENCODER_RESOLUTION * SAMPLE_TIME);
+    impulsy = current_counter;
+    licznik++;
+
+    // Low pass filter (alpha=0.1)
+    float alpha = 0.1f; 
+    filtered_velocity = alpha * raw_velocity + (1.0f - alpha) * filtered_velocity;
+    predk = filtered_velocity; 
+    
+    static float filtered_velocity_2 = 0.0f;
+    filtered_velocity_2 = alpha * filtered_velocity + (1.0f - alpha) * filtered_velocity_2;
+    predk = filtered_velocity_2;
+    filtered_velocity = filtered_velocity_2; 
+    
+    velocity_error = set_velocity - filtered_velocity;
+    Integral_error += velocity_error * SAMPLE_TIME;
+    float deriv = (filtered_velocity - prev_velocity) / SAMPLE_TIME; 
+    prev_velocity = filtered_velocity;
+    
+    pid_output = (kp * velocity_error) + (ki * Integral_error) - (kd * deriv);
+    
+    // Voltage Saturation
+    if (pid_output > V_SUPPLY) pid_output = V_SUPPLY;
+    if (pid_output < -V_SUPPLY) pid_output = -V_SUPPLY;
+    
+    // Convert Volts to PWM duty cycle
+    float abs_pid_output = (pid_output > 0) ? pid_output : -pid_output;
+    uint32_t pwm_val = (uint32_t)((abs_pid_output / V_SUPPLY) * PWM_PERIOD);
+
+    // Output to H-Bridge: Enable (PWM) + 2 Direction Pins (GPIO)
+    if (pid_output >= 0)
+    {
+      HAL_GPIO_WritePin(GPIOF, GPIO_PIN_8, GPIO_PIN_SET);   // IN1
+      HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_RESET); // IN2
+    }
+    else
+    {
+      HAL_GPIO_WritePin(GPIOF, GPIO_PIN_8, GPIO_PIN_RESET); // IN1
+      HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_SET);   // IN2
+    }
+    __HAL_TIM_SET_COMPARE(&htim5, TIM_CHANNEL_2, pwm_val);
+    
+    // Set flag for telemetry (every tick = 20ms)
+    telemetry_flag = 1;
+
+    // Set flag for LCD (every 200ms = every 10th tick)
+    static uint8_t lcd_count = 0;
+    if (++lcd_count >= 10)
+    {
+      lcd_count = 0;
+      lcd_flag = 1;
+    }
+  }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == LPUART1)
+  {
+    if (rx_char == '\r' || rx_char == '\n')
+    {
+      uart_rx_buf[rx_idx] = '\0';
+      if (rx_idx > 0)
+      {
+        set_velocity = atof(uart_rx_buf);
+      }
+      rx_idx = 0;
+    }
+    else if (rx_idx < sizeof(uart_rx_buf) - 1)
+    {
+      uart_rx_buf[rx_idx++] = rx_char;
+    }
+    HAL_UART_Receive_IT(&hlpuart1, &rx_char, 1);
+  }
+}
+
 
 /* USER CODE END 4 */
 
