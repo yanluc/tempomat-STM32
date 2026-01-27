@@ -10,7 +10,7 @@ R = 7.5;            % Resistance
 tau = 7.2925;       % Time constant
 m_car = 0.1;        % Car mass
 r_wheel = 0.03;     % Wheel radius
-L = 0.1;            % Assumed inductance
+L = 0.00001;        % Inductance
 
 % Total Inertia J
 J = (tau * (k_fi^2 + b*R) / R) + (m_car * r_wheel^2);

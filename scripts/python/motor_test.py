@@ -3,7 +3,7 @@ import time
 import sys
 
 # Configuration
-SERIAL_PORT = '/dev/ttyACM0'  # Typical for STM32 Nucleo on Linux
+SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
 TIMEOUT = 1
 

@@ -2879,9 +2879,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001980:	6a7b      	ldr	r3, [r7, #36]	@ 0x24
  8001982:	6013      	str	r3, [r2, #0]
     
-    // Calculate velocity in rad/s (SI units)
-    // 1 tick = 2*PI / ENCODER_RESOLUTION [rad]
-    // velocity = (ticks * rad_per_tick) / dt
+    // Calculate velocity in rad/s
     float raw_velocity = ((float)diff * 2.0f * M_PI) / (ENCODER_RESOLUTION * SAMPLE_TIME);
  8001984:	6a3b      	ldr	r3, [r7, #32]
  8001986:	ee07 3a90 	vmov	s15, r3
@@ -2903,7 +2901,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  80019b2:	4a85      	ldr	r2, [pc, #532]	@ (8001bc8 <HAL_TIM_PeriodElapsedCallback+0x270>)
  80019b4:	6013      	str	r3, [r2, #0]
 
-    // Low pass filter (Stronger filtering: alpha=0.1)
+    // Low pass filter (alpha=0.1)
     float alpha = 0.1f; 
  80019b6:	4b85      	ldr	r3, [pc, #532]	@ (8001bcc <HAL_TIM_PeriodElapsedCallback+0x274>)
  80019b8:	61bb      	str	r3, [r7, #24]
@@ -2926,7 +2924,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  80019ea:	4a7a      	ldr	r2, [pc, #488]	@ (8001bd4 <HAL_TIM_PeriodElapsedCallback+0x27c>)
  80019ec:	6013      	str	r3, [r2, #0]
     
-    // Optional: Secondary filter stage if velocity is still noisy
     static float filtered_velocity_2 = 0.0f;
     filtered_velocity_2 = alpha * filtered_velocity + (1.0f - alpha) * filtered_velocity_2;
  80019ee:	4b78      	ldr	r3, [pc, #480]	@ (8001bd0 <HAL_TIM_PeriodElapsedCallback+0x278>)
@@ -2947,13 +2944,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001a1e:	681b      	ldr	r3, [r3, #0]
  8001a20:	4a6c      	ldr	r2, [pc, #432]	@ (8001bd4 <HAL_TIM_PeriodElapsedCallback+0x27c>)
  8001a22:	6013      	str	r3, [r2, #0]
-    filtered_velocity = filtered_velocity_2; // Use smoothed value for PID
+    filtered_velocity = filtered_velocity_2; 
  8001a24:	4b6c      	ldr	r3, [pc, #432]	@ (8001bd8 <HAL_TIM_PeriodElapsedCallback+0x280>)
  8001a26:	681b      	ldr	r3, [r3, #0]
  8001a28:	4a69      	ldr	r2, [pc, #420]	@ (8001bd0 <HAL_TIM_PeriodElapsedCallback+0x278>)
  8001a2a:	6013      	str	r3, [r2, #0]
     
-    // PID (Output in Volts)
     velocity_error = set_velocity - filtered_velocity;
  8001a2c:	4b6b      	ldr	r3, [pc, #428]	@ (8001bdc <HAL_TIM_PeriodElapsedCallback+0x284>)
  8001a2e:	ed93 7a00 	vldr	s14, [r3]
