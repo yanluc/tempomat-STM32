@@ -527,6 +527,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, IN1_Pin|IN2_Pin, GPIO_PIN_RESET);
@@ -570,6 +571,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PD0 PD1 PD2 PD3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   /* Configure GPIO pins : PF8 PF9 for H-Bridge IN1/IN2 */
   GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
@@ -582,10 +589,39 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void Handle_YK04(void)
+{
+  static uint32_t last_tick = 0;
+  if (HAL_GetTick() - last_tick < 200) return; // Debounce / repeat rate
+
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_0) == GPIO_PIN_SET) // Button A: Faster
+  {
+    set_velocity += 10.0f;
+    last_tick = HAL_GetTick();
+  }
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1) == GPIO_PIN_SET) // Button B: Slower
+  {
+    set_velocity -= 10.0f;
+    last_tick = HAL_GetTick();
+  }
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == GPIO_PIN_SET) // Button C: Stop
+  {
+    set_velocity = 0;
+    Integral_error = 0;
+    last_tick = HAL_GetTick();
+  }
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_3) == GPIO_PIN_SET) // Button D: Preset
+  {
+    set_velocity = 100.0f;
+    last_tick = HAL_GetTick();
+  }
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM6)
   {
+    Handle_YK04();
     int32_t current_counter = (int32_t)__HAL_TIM_GET_COUNTER(&htim2);
     int32_t diff = current_counter - last_counter;
     last_counter = current_counter;
@@ -607,6 +643,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     
     velocity_error = set_velocity - filtered_velocity;
     Integral_error += velocity_error * SAMPLE_TIME;
+    if (Integral_error > 10) Integral_error = 10;
+    if (Integral_error < -10) Integral_error = -10;
     float deriv = (filtered_velocity - prev_velocity) / SAMPLE_TIME; 
     prev_velocity = filtered_velocity;
     

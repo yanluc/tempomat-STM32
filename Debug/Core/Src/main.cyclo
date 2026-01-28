@@ -7,6 +7,7 @@
 ../Core/Src/main.c:441:13:MX_TIM6_Init	3
 ../Core/Src/main.c:480:13:MX_USB_OTG_FS_PCD_Init	2
 ../Core/Src/main.c:515:13:MX_GPIO_Init	1
-../Core/Src/main.c:585:6:HAL_TIM_PeriodElapsedCallback	7
-../Core/Src/main.c:649:6:HAL_UART_RxCpltCallback	6
-../Core/Src/main.c:677:6:Error_Handler	1
+../Core/Src/main.c:592:6:Handle_YK04	6
+../Core/Src/main.c:620:6:HAL_TIM_PeriodElapsedCallback	7
+../Core/Src/main.c:685:6:HAL_UART_RxCpltCallback	6
+../Core/Src/main.c:713:6:Error_Handler	1
