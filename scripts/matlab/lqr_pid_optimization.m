@@ -1,81 +1,87 @@
-% LQR vs DLQR Optimization for DC Motor Velocity Control
-% Compares continuous vs discrete (20ms) PID parameters
+% LQR & DLQR PID Optimization for DC Motor
 clear; clc; close all;
 
-%% 1. Parameters (SI Units)
+%% 1. Parametry (Dostosowane do Twojego silnika: 10V -> ~227 rad/s)
 Ts = 0.020;         % Sampling time [s]
 k_fi = 0.004916;    % Motor constant
 b = 0.00000869;     % Friction
 R = 7.5;            % Resistance
 tau = 7.2925;       % Time constant
-m_car = 0.1;        % Car mass
-r_wheel = 0.03;     % Wheel radius
-L = 0.00001;        % Inductance
+L = 0.0001;
+m_car = 0.5;        
+m_wheel = 0.05;     
+r_wheel = 0.032;    
 
-% Total Inertia J
-J = (tau * (k_fi^2 + b*R) / R) + (m_car * r_wheel^2);
+% Moment bezwładności
+J = (0.5 * m_wheel * r_wheel^2) + (m_car * r_wheel^2);
 
-%% 2. Continuous LQR
-% Continuous state: [int_e; omega; i]
-Ac = [0, -1, 0; 
-      0, -b/J, k_fi/J;
-      0, -k_fi/L, -R/L];
-Bc = [0; 0; 1/L];
+% Model ciągły silnika [omega; i]
+Am = [-b/J, k_fi/J; -k_fi/L, -R/L];
+Bm = [0; 1/L];
 
-Q = diag([1000, 10, 1]);
+% Wagi LQR
+Q = diag([100, 10, 0.1]); % [całka błędu, prędkość, prąd]
 R_weight = 1;
 
-Kc = lqr(Ac, Bc, Q, R_weight);
+%% 2. Projekt sterownika dyskretnego (DLQR)
+sys_m = ss(Am, Bm, [1, 0], 0);
+sys_md = c2d(sys_m, Ts, 'zoh');
+Ad = sys_md.A;
+Bd = sys_md.B;
 
-% Continuous PID extraction
-Ki_c = Kc(1);
-Kp_c = Kc(2) + (Kc(3) * b / k_fi);
-Kd_c = Kc(3) * J / k_fi;
+% Rozszerzenie o integrator: [int_e; omega; i]
+% int_e(k) = int_e(k-1) + Ts*(w_set - omega(k))
+A_aug = [1, -Ts, 0; 
+         0, Ad(1,1), Ad(1,2);
+         0, Ad(2,1), Ad(2,2)];
+B_aug = [0; Bd];
+B_ref = [Ts; 0; 0]; % Wejście wartości zadanej (Setpoint)
 
-%% 3. Discrete LQR (DLQR)
-% Discretize plant only
-sys_c = ss(Ac(2:3, 2:3), Bc(2:3), [1, 0], 0);
-sys_d = c2d(sys_c, Ts, 'zoh');
-Ad = sys_d.A;
-Bd = sys_d.B;
+Kd_lqr = dlqr(A_aug, B_aug, Q, R_weight);
 
-% Augmented discrete: [sum_e; omega; i]
-A_aug_d = [1, -Ts, 0; 
-           0, Ad(1,1), Ad(1,2);
-           0, Ad(2,1), Ad(2,2)];
-B_aug_d = [0; Bd];
+% Mapowanie na PID (dla sprawozdania)
+Ki = -Kd_lqr(1);
+Kp = Kd_lqr(2) + (Kd_lqr(3)*b/k_fi); 
+Kd = Kd_lqr(3)*J/k_fi;
 
-Kd_gain = dlqr(A_aug_d, B_aug_d, Q, R_weight);
+fprintf('--- Nastawy PID z DLQR (Ts = %d ms) ---\n', Ts*1000);
+fprintf('Kp = %.4f\n', Kp);
+fprintf('Ki = %.4f\n', Ki);
+fprintf('Kd = %.4f\n\n', Kd);
 
-% Discrete PID extraction
-Ki_d = Kd_gain(1);
-Kp_d = Kd_gain(2) + (Kd_gain(3) * b / k_fi);
-Kd_d = Kd_gain(3) * J / (k_fi * Ts);
+%% 3. Symulacja zamkniętego układu
+setpoint = 100; % Wartość zadana [rad/s]
+t_final = 5;
+t = 0:Ts:t_final;
 
-%% 4. Results Comparison
-fprintf('--- Continuous LQR PID ---\n');
-fprintf('Kp = %.6f, Ki = %.6f, Kd = %.6f\n\n', Kp_c, Ki_c, Kd_c);
+% Budujemy system, który ma dwa wyjścia: [prędkość; napięcie]
+% y1 = omega = [0 1 0] * x
+% y2 = u = -K * x
+C_cl = [0, 1, 0; -Kd_lqr];
+D_cl = [0; 0];
+sys_cl = ss(A_aug - B_aug*Kd_lqr, B_ref, C_cl, D_cl, Ts);
 
-fprintf('--- Discrete DLQR PID (Ts = %d ms) ---\n', Ts*1000);
-fprintf('Kp = %.6f, Ki = %.6f, Kd = %.6f\n\n', Kp_d, Ki_d, Kd_d);
+[y_sim, t_out] = step(setpoint * sys_cl, t_final);
 
-%% 5. Simulation
-t_sim = 0:0.001:3;
-sys_cl_c = ss(Ac - Bc*Kc, [1;0;0], [0,1,0], 0);
-sys_cl_d = ss(A_aug_d - B_aug_d*Kd_gain, [Ts;0;0], [0,1,0], 0, Ts);
+% Rozdzielenie wyników
+v_actual = y_sim(:,1);
+u_control = y_sim(:,2);
 
-[yc, tc] = step(sys_cl_c, t_sim);
+%% 4. Wykresy
+figure('Color', 'w', 'Name', 'Symulacja DLQR');
 
-% Discrete simulation
-t_discrete = 0:Ts:3;
-[yd, td] = step(sys_cl_d, t_discrete);
-
-figure('Name', 'LQR vs DLQR Comparison', 'Color', 'w');
-plot(tc, yc, 'r-', 'LineWidth', 1.5); hold on;
-stairs(td, yd, 'b', 'LineWidth', 1.5);
-yline(1, 'k--');
+subplot(2,1,1);
+stairs(t_out, v_actual, 'b', 'LineWidth', 2); hold on;
+yline(setpoint, 'r--', 'Setpoint');
 grid on;
-legend('Continuous LQR', 'Discrete DLQR (20ms)');
-title('Velocity Control: Continuous vs Discrete LQR');
-ylabel('Angular Velocity [rad/s]');
-xlabel('Time [s]');
+title(['Odpowiedź skokowa: ', num2str(setpoint), ' rad/s']);
+ylabel('Prędkość [rad/s]');
+
+subplot(2,1,2);
+stairs(t_out, u_control, 'r', 'LineWidth', 1.5); hold on;
+yline(12, 'k:', 'Limit +12V');
+yline(-12, 'k:', 'Limit -12V');
+grid on;
+title('Sygnał sterujący (Napięcie)');
+ylabel('Napięcie [V]');
+xlabel('Czas [s]');

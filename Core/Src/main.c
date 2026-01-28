@@ -76,6 +76,9 @@ uint8_t rx_char;
 uint8_t rx_idx = 0;
 uint8_t telemetry_flag = 0;
 uint8_t lcd_flag = 0;
+uint8_t control_mode = 0; // 0 = Velocity PID, 1 = Manual Voltage
+float manual_voltage = 0.0f;
+uint32_t pwm_val;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,7 +140,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
   HAL_UART_Receive_IT(&hlpuart1, &rx_char, 1);
   lcd_init ();
-  lcd_send_string ("Inicjalizacja ukladu");
+  lcd_send_string ("Inicjalizacja");
   HAL_Delay(100);
   lcd_put_cur(1, 0);
   lcd_send_string("Start");
@@ -594,25 +597,29 @@ void Handle_YK04(void)
   static uint32_t last_tick = 0;
   if (HAL_GetTick() - last_tick < 200) return; // Debounce / repeat rate
 
-  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_0) == GPIO_PIN_SET) // Button A: Faster
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == GPIO_PIN_SET) // Button A: Faster
   {
     set_velocity += 10.0f;
+    control_mode = 0;
     last_tick = HAL_GetTick();
   }
-  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1) == GPIO_PIN_SET) // Button B: Slower
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_0) == GPIO_PIN_SET) // Button B: Slower
   {
     set_velocity -= 10.0f;
+    control_mode = 0;
     last_tick = HAL_GetTick();
   }
-  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == GPIO_PIN_SET) // Button C: Stop
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_3) == GPIO_PIN_SET) // Button C: Stop
   {
     set_velocity = 0;
     Integral_error = 0;
+    control_mode = 0;
     last_tick = HAL_GetTick();
   }
-  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_3) == GPIO_PIN_SET) // Button D: Preset
+  if (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1) == GPIO_PIN_SET) // Button D: Preset
   {
     set_velocity = 100.0f;
+    control_mode = 0;
     last_tick = HAL_GetTick();
   }
 }
@@ -643,12 +650,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     
     velocity_error = set_velocity - filtered_velocity;
     Integral_error += velocity_error * SAMPLE_TIME;
-    if (Integral_error > 10) Integral_error = 10;
-    if (Integral_error < -10) Integral_error = -10;
-    float deriv = (filtered_velocity - prev_velocity) / SAMPLE_TIME; 
+    if (Integral_error > 30) Integral_error = 30;
+    if (Integral_error < -30) Integral_error = -30;
+    static float inertia_deriv = 0.0f;
+    float raw_deriv = (filtered_velocity - prev_velocity) / SAMPLE_TIME;
+    float inertia_alpha = 0.5f;
+    inertia_deriv = inertia_alpha *  inertia_deriv + (1.0f - inertia_alpha) * raw_deriv;
     prev_velocity = filtered_velocity;
     
-    pid_output = (kp * velocity_error) + (ki * Integral_error) - (kd * deriv);
+    if (control_mode == 0)
+    {
+       pid_output = (kp * velocity_error) + (ki * Integral_error) - (kd * inertia_deriv);
+    }
+    else
+    {
+       pid_output = manual_voltage;
+    }
     
     // Voltage Saturation
     if (pid_output > V_SUPPLY) pid_output = V_SUPPLY;
@@ -656,7 +673,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     
     // Convert Volts to PWM duty cycle
     float abs_pid_output = (pid_output > 0) ? pid_output : -pid_output;
-    uint32_t pwm_val = (uint32_t)((abs_pid_output / V_SUPPLY) * PWM_PERIOD);
+    pwm_val = (uint32_t)((abs_pid_output / V_SUPPLY) * PWM_PERIOD);
 
     // Output to H-Bridge: Enable (PWM) + 2 Direction Pins (GPIO)
     if (pid_output >= 0)
@@ -693,7 +710,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       uart_rx_buf[rx_idx] = '\0';
       if (rx_idx > 0)
       {
-        set_velocity = atof(uart_rx_buf);
+        if (uart_rx_buf[0] == 'U' || uart_rx_buf[0] == 'u')
+        {
+          manual_voltage = atof(&uart_rx_buf[1]);
+          control_mode = 1;
+        }
+        else if (uart_rx_buf[0] == 'V' || uart_rx_buf[0] == 'v')
+        {
+          set_velocity = atof(&uart_rx_buf[1]);
+          control_mode = 0;
+        }
+        else
+        {
+          set_velocity = atof(uart_rx_buf);
+          control_mode = 0;
+        }
       }
       rx_idx = 0;
     }
