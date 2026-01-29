@@ -7,9 +7,9 @@ import csv
 import os
 
 # Configuration
-SERIAL_PORT = '/dev/ttyACM0' # Sprawdz czy to właściwy port
+SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
-VOLTAGE_RANGE = np.linspace(-12.0, 12.0, 25) # -12V, -11V, ..., 12V
+VOLTAGE_RANGE = np.linspace(-12.0, 12.0, 25)
 STABILIZE_TIME = 5.0  # seconds to wait for steady state
 MEASURE_TIME = 2.0    # seconds to average measurements
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +49,7 @@ def measure_static_characteristic():
                 if not line:
                     continue
                 
-                # Match typical output format: V: 1.23 rad/s ... Out: 1.23V
+                # Match output format: V: 1.23 rad/s ... Out: 1.23V
                 match = re.search(r'V:\s*([-+]?\d*\.\d+|\d+)', line)
                 if match:
                     v = float(match.group(1))
