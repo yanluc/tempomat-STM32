@@ -37,7 +37,7 @@
 /* USER CODE BEGIN PD */
 #define ENCODER_RESOLUTION 48.0f
 #define SAMPLE_TIME 0.020f
-#define V_SUPPLY 12.0f
+#define V_SUPPLY 12.00f
 #define PWM_PERIOD 2399.0f
 #define M_PI 3.1415926535f
 /* USER CODE END PD */
@@ -638,15 +638,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     impulsy = current_counter;
     licznik++;
 
-    // Low pass filter (alpha=0.1)
-    float alpha = 0.1f; 
+    // Low pass filter
+    float alpha = 0.3f;
     filtered_velocity = alpha * raw_velocity + (1.0f - alpha) * filtered_velocity;
-    predk = filtered_velocity; 
-    
+    predk = filtered_velocity;
+
     static float filtered_velocity_2 = 0.0f;
     filtered_velocity_2 = alpha * filtered_velocity + (1.0f - alpha) * filtered_velocity_2;
     predk = filtered_velocity_2;
-    filtered_velocity = filtered_velocity_2; 
+    filtered_velocity = filtered_velocity_2;
     
     velocity_error = set_velocity - filtered_velocity;
     Integral_error += velocity_error * SAMPLE_TIME;
@@ -668,8 +668,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
     
     // Voltage Saturation
-    if (pid_output > V_SUPPLY) pid_output = V_SUPPLY;
-    if (pid_output < -V_SUPPLY) pid_output = -V_SUPPLY;
+    if (pid_output >= V_SUPPLY) pid_output = V_SUPPLY - 0.01;
+    if (pid_output <= -V_SUPPLY) pid_output = -V_SUPPLY + 0.01;
     
     // Convert Volts to PWM duty cycle
     float abs_pid_output = (pid_output > 0) ? pid_output : -pid_output;

@@ -39,9 +39,9 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  17 .debug_line   0001b10c  00000000  00000000  0005b13e  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0010c65e  00000000  00000000  0007624a  2**0
+ 18 .debug_str    0010c65f  00000000  00000000  0007624a  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  001828a8  2**0
+ 19 .comment      00000043  00000000  00000000  001828a9  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00007884  00000000  00000000  001828ec  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -3057,8 +3057,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001ad2:	4aa5      	ldr	r2, [pc, #660]	@ (8001d68 <HAL_TIM_PeriodElapsedCallback+0x2f4>)
  8001ad4:	6013      	str	r3, [r2, #0]
 
-    // Low pass filter (alpha=0.1)
-    float alpha = 0.1f; 
+    // Low pass filter
+    float alpha = 0.3f;
  8001ad6:	4ba5      	ldr	r3, [pc, #660]	@ (8001d6c <HAL_TIM_PeriodElapsedCallback+0x2f8>)
  8001ad8:	61bb      	str	r3, [r7, #24]
     filtered_velocity = alpha * raw_velocity + (1.0f - alpha) * filtered_velocity;
@@ -3074,12 +3074,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001afc:	ee77 7a27 	vadd.f32	s15, s14, s15
  8001b00:	4b9b      	ldr	r3, [pc, #620]	@ (8001d70 <HAL_TIM_PeriodElapsedCallback+0x2fc>)
  8001b02:	edc3 7a00 	vstr	s15, [r3]
-    predk = filtered_velocity; 
+    predk = filtered_velocity;
  8001b06:	4b9a      	ldr	r3, [pc, #616]	@ (8001d70 <HAL_TIM_PeriodElapsedCallback+0x2fc>)
  8001b08:	681b      	ldr	r3, [r3, #0]
  8001b0a:	4a9a      	ldr	r2, [pc, #616]	@ (8001d74 <HAL_TIM_PeriodElapsedCallback+0x300>)
  8001b0c:	6013      	str	r3, [r2, #0]
-    
+
     static float filtered_velocity_2 = 0.0f;
     filtered_velocity_2 = alpha * filtered_velocity + (1.0f - alpha) * filtered_velocity_2;
  8001b0e:	4b98      	ldr	r3, [pc, #608]	@ (8001d70 <HAL_TIM_PeriodElapsedCallback+0x2fc>)
@@ -3100,7 +3100,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001b3e:	681b      	ldr	r3, [r3, #0]
  8001b40:	4a8c      	ldr	r2, [pc, #560]	@ (8001d74 <HAL_TIM_PeriodElapsedCallback+0x300>)
  8001b42:	6013      	str	r3, [r2, #0]
-    filtered_velocity = filtered_velocity_2; 
+    filtered_velocity = filtered_velocity_2;
  8001b44:	4b8c      	ldr	r3, [pc, #560]	@ (8001d78 <HAL_TIM_PeriodElapsedCallback+0x304>)
  8001b46:	681b      	ldr	r3, [r3, #0]
  8001b48:	4a89      	ldr	r2, [pc, #548]	@ (8001d70 <HAL_TIM_PeriodElapsedCallback+0x2fc>)
@@ -3214,23 +3214,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
     
     // Voltage Saturation
-    if (pid_output > V_SUPPLY) pid_output = V_SUPPLY;
+    if (pid_output >= V_SUPPLY) pid_output = V_SUPPLY - 0.01;
  8001c5a:	4b54      	ldr	r3, [pc, #336]	@ (8001dac <HAL_TIM_PeriodElapsedCallback+0x338>)
  8001c5c:	edd3 7a00 	vldr	s15, [r3]
  8001c60:	eeb2 7a08 	vmov.f32	s14, #40	@ 0x41400000  12.0
  8001c64:	eef4 7ac7 	vcmpe.f32	s15, s14
  8001c68:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 8001c6c:	dd02      	ble.n	8001c74 <HAL_TIM_PeriodElapsedCallback+0x200>
+ 8001c6c:	db02      	blt.n	8001c74 <HAL_TIM_PeriodElapsedCallback+0x200>
  8001c6e:	4b4f      	ldr	r3, [pc, #316]	@ (8001dac <HAL_TIM_PeriodElapsedCallback+0x338>)
  8001c70:	4a50      	ldr	r2, [pc, #320]	@ (8001db4 <HAL_TIM_PeriodElapsedCallback+0x340>)
  8001c72:	601a      	str	r2, [r3, #0]
-    if (pid_output < -V_SUPPLY) pid_output = -V_SUPPLY;
+    if (pid_output <= -V_SUPPLY) pid_output = -V_SUPPLY + 0.01;
  8001c74:	4b4d      	ldr	r3, [pc, #308]	@ (8001dac <HAL_TIM_PeriodElapsedCallback+0x338>)
  8001c76:	edd3 7a00 	vldr	s15, [r3]
  8001c7a:	eeba 7a08 	vmov.f32	s14, #168	@ 0xc1400000 -12.0
  8001c7e:	eef4 7ac7 	vcmpe.f32	s15, s14
  8001c82:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 8001c86:	d502      	bpl.n	8001c8e <HAL_TIM_PeriodElapsedCallback+0x21a>
+ 8001c86:	d802      	bhi.n	8001c8e <HAL_TIM_PeriodElapsedCallback+0x21a>
  8001c88:	4b48      	ldr	r3, [pc, #288]	@ (8001dac <HAL_TIM_PeriodElapsedCallback+0x338>)
  8001c8a:	4a4b      	ldr	r2, [pc, #300]	@ (8001db8 <HAL_TIM_PeriodElapsedCallback+0x344>)
  8001c8c:	601a      	str	r2, [r3, #0]
@@ -3343,7 +3343,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001d60:	3f75c28f 	.word	0x3f75c28f
  8001d64:	200008a4 	.word	0x200008a4
  8001d68:	200008a8 	.word	0x200008a8
- 8001d6c:	3dcccccd 	.word	0x3dcccccd
+ 8001d6c:	3e99999a 	.word	0x3e99999a
  8001d70:	200008b0 	.word	0x200008b0
  8001d74:	200008ac 	.word	0x200008ac
  8001d78:	20000954 	.word	0x20000954
@@ -3361,8 +3361,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  8001da8:	2000000c 	.word	0x2000000c
  8001dac:	200008b8 	.word	0x200008b8
  8001db0:	20000948 	.word	0x20000948
- 8001db4:	41400000 	.word	0x41400000
- 8001db8:	c1400000 	.word	0xc1400000
+ 8001db4:	413fd70a 	.word	0x413fd70a
+ 8001db8:	c13fd70a 	.word	0xc13fd70a
  8001dbc:	4515f000 	.word	0x4515f000
  8001dc0:	2000094c 	.word	0x2000094c
  8001dc4:	48001400 	.word	0x48001400

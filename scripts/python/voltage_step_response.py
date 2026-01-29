@@ -10,7 +10,7 @@ import os
 SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
 VOLTAGE_STEP = 10.0  # Volts
-DURATION = 10.0      # seconds
+DURATION = 20.0      # seconds
 STABILIZE_TIME = 10.0 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
