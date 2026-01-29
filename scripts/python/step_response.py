@@ -9,7 +9,7 @@ import os
 # Configuration
 SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
-STEP_VALUE = 100.0  # rad/s
+STEP_VALUE = 80.0  # rad/s
 DURATION = 5.0      # seconds
 STABILIZE_TIME = 10.0 # seconds before step
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +128,7 @@ def measure_step_response():
         f'Steady State: {steady_state:.2f} rad/s'
     ))
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-    ax1.text(0.05, 0.95, textstr, transform=ax1.transAxes, fontsize=10,
+    ax1.text(0.8, 0.8, textstr, transform=ax1.transAxes, fontsize=10,
             verticalalignment='top', bbox=props)
 
     ax2.plot(times, outputs, 'k-', label='Control Signal')

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
-from scipy.interpolate import interp1d # Nowy import do interpolacji
+from scipy.interpolate import interp1d
 import glob
 import re
 
@@ -88,7 +88,6 @@ def load_datasets():
     datasets.sort(key=lambda x: x['pwm'])
     return datasets
 
-# --- POZOSTAŁE FUNKCJE DYNAMIKI SILNIKA I OPTYMALIZACJI (Bez zmian) ---
 def dc_motor_step_response(t, V, k_phi, J_val, b, R_val):
     if (R_val * b + k_phi**2) == 0:
         return np.zeros_like(t)
@@ -136,7 +135,6 @@ def main():
     )
     k_phi_opt, b_opt = res.x
     
-    # ... (Wypisanie wyników estymacji) ...
     print("\n" + "="*50)
     print("ZIDENTYFIKOWANE PARAMETRY MODELU")
     print("="*50)
