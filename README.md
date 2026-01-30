@@ -48,10 +48,10 @@ Moduł podłączony do portu **GPIOD**:
 | **Maks. wypełnienie PWM** | 2399 (ARR) |
 
 ## Konfiguracja Regulatora PID
-Aktualne nastawy regulatora dobrane eksperymentalnie:
-*   **Kp (Człon proporcjonalny):** `1.0`
-*   **Ki (Człon całkujący):** `0.5`
-*   **Kd (Człon różniczkujący):** `0.01`
+Aktualne nastawy regulatora dobrane za pomocą algorytmu DLQR (discrete linear quadratic regulator):
+*   **Kp (Człon proporcjonalny):** `3.13`
+*   **Ki (Człon całkujący):** `8.01`
+*   **Kd (Człon różniczkujący):** `0.001`
 
 
 ## Instrukcja Uruchomienia

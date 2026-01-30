@@ -65,7 +65,7 @@ float predk; // current velocity in rad/s
 float set_velocity = 5.0f; // Target velocity in rad/s
 float filtered_velocity = 0.0f;
 float velocity_error = 0.0f;
-float kp = 1.0f, ki = 0.5f, kd = 0.01f; // PID constants (Units: V/(rad/s), V/rad, V/(rad/s^2))
+float kp = 3.13f, ki = 8.01f, kd = 0.001f; // PID constants (Units: V/(rad/s), V/rad, V/(rad/s^2))
 float pid_output = 0.0f; // in Volts
 float prev_velocity = 0.0f;
 int32_t last_counter = 0;
