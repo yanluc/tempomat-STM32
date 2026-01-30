@@ -668,8 +668,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
     
     // Voltage Saturation
-    if (pid_output >= V_SUPPLY) pid_output = V_SUPPLY - 0.01;
-    if (pid_output <= -V_SUPPLY) pid_output = -V_SUPPLY + 0.01;
+    if (pid_output >= V_SUPPLY) pid_output = V_SUPPLY;
+    if (pid_output <= -V_SUPPLY) pid_output = -V_SUPPLY;
     
     // Convert Volts to PWM duty cycle
     float abs_pid_output = (pid_output > 0) ? pid_output : -pid_output;
