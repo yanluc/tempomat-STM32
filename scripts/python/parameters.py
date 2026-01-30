@@ -6,21 +6,16 @@ from scipy.interpolate import interp1d
 import glob
 import re
 
-# --- KONFIGURACJA STAŁYCH ---
 R = 7.5                # Rezystancja [Ohm]
 V_SOURCE = 12.0        # Napięcie zasilacza [V]
 PWM_MAX = 255          # Maksymalna wartość PWM
 
-# --- ZNANA BEZWŁADNOŚĆ (J) ---
 WHEEL_MASS = 0.0695    # kg
 WHEEL_RADIUS = 0.05    # m
 J_WHEEL = 0.5 * WHEEL_MASS * WHEEL_RADIUS**2
-# ----------------------------
 
-# --- NOWA KONFIGURACJA PRÓBKOWANIA ---
 TARGET_SAMPLE_RATE = 50.0
 DELTA_T = 1.0 / TARGET_SAMPLE_RATE
-# ------------------------------------
 
 def resample_and_interpolate_data(t_raw, omega_raw, sample_dt):
     """
@@ -30,24 +25,16 @@ def resample_and_interpolate_data(t_raw, omega_raw, sample_dt):
     if len(t_raw) < 2:
         return np.array([]), np.array([])
         
-    # 1. Określenie nowego, ujednoliconego wektora czasu
     t_start = t_raw[0]
     t_end = t_raw[-1]
     
-    # Tworzymy nowy wektor czasu z równymi krokami
     t_new = np.arange(t_start, t_end, sample_dt)
     
-    # Upewniamy się, że ostatni punkt jest uwzględniony
     if t_end not in t_new:
         t_new = np.append(t_new, t_end)
     
-    # 2. Tworzenie funkcji interpolującej
-    # 'linear' - interpolacja liniowa
-    # bounds_error=False - nie rzuca błędu, jeśli t_new wychodzi poza zakres t_raw
-    # fill_value="extrapolate" - ekstrapoluje wartości na krańcach
     interpolation_function = interp1d(t_raw, omega_raw, kind='linear', fill_value="extrapolate", bounds_error=False)
     
-    # 3. Obliczanie nowych wartości prędkości w ujednoliconych punktach czasowych
     omega_new = interpolation_function(t_new)
     
     return t_new, omega_new
@@ -69,16 +56,14 @@ def load_datasets():
             df = pd.read_csv(file)
             t_raw = df['Timestamp'].values
             t_raw = t_raw - t_raw[0]
-            omega_raw = df['Value'].values # rad/s
-            
-            # --- ZASTOSOWANIE INTERPOLACJI ---
+            omega_raw = df['Value'].values 
             t_new, omega_new = resample_and_interpolate_data(t_raw, omega_raw, DELTA_T)
             
             datasets.append({
                 'pwm': pwm_val,
                 'voltage': voltage,
-                't': t_new,          # Ujednolicony czas
-                'omega': omega_new,  # Interpolowana prędkość
+                't': t_new,
+                'omega': omega_new,
                 'filename': file
             })
             print(f"  -> Wczytano i interpolowano {file} (Uz={voltage:.2f}V, próbek: {len(t_new)})")
@@ -126,7 +111,6 @@ def main():
     if not datasets:
         return
 
-    # --- OPTYMALIZACJA (Estymacja k_phi i b) ---
     x0 = [0.02, 0.00001]
     bounds = ([0, 0], [np.inf, np.inf])
     res = least_squares(
@@ -147,7 +131,6 @@ def main():
     print(f"Średnia stała czasowa (tau): {tau_avg:.4f} s")
     print("="*50)
 
-    # --- DEMONSTRACJA OBLICZEŃ---
     omega_ss = datasets[-1]['omega'][-1] 
     U_test = datasets[-1]['voltage']
     
@@ -174,10 +157,8 @@ def main():
     print(f"   => Napięcie zadane U_req = {U_req_3:.2f} V (Mniejsze niż U_req_2)")
     print("="*50)
     
-    # --- WIZUALIZACJA ---
     plt.figure(figsize=(12, 8))
     
-    # Wykres 1: Dopasowanie modelu
     plt.subplot(2, 1, 1)
     colors = plt.cm.viridis(np.linspace(0, 1, len(datasets)))
     
@@ -198,7 +179,6 @@ def main():
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True)
 
-    # Wykres 2: Błędy
     plt.subplot(2, 1, 2)
     for i, data in enumerate(datasets):
         t = data['t']
